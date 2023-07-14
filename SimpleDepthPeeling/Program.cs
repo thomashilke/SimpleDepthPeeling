@@ -1,7 +1,8 @@
-﻿
+﻿using System.Diagnostics;
 
-using System.Diagnostics;
-
+/*
+ * Baseline for comparison with the depth peeling algorithm.
+ */
 Color FrontToBackBlend(IEnumerable<Fragment> fragments)
 {
     var dst = new Color(0.0, 0.0, 0.0, 1.0);
@@ -19,11 +20,13 @@ Color FrontToBackBlend(IEnumerable<Fragment> fragments)
     return dst;
 }
 
-Color Blend(Color cSrc, Color cDst, BlendFactor srcFactor, BlendFactor dstFactor, BlendEquation blendEquation)
+/*
+ * Simulate the blending model of OpenGL (glBlendFunc, glBlendFuncSeparate, glBlendEquation).
+ */
+Color Blend(Color cSrc, Color cDst, BlendFactor srcColorFactor, BlendFactor srcAlphaFactor, BlendFactor dstColorFactor, BlendFactor dstAlphaFactor, BlendEquation blendEquation)
 {
-    var fSrc = Factor(srcFactor, cSrc, cDst);
-
-    var fDst = Factor(dstFactor, cSrc, cDst);
+    var fSrc = Factor(srcColorFactor, srcAlphaFactor, cSrc, cDst);
+    var fDst = Factor(dstColorFactor, dstAlphaFactor, cSrc, cDst);
 
     var newColor = blendEquation switch
     {
@@ -34,29 +37,46 @@ Color Blend(Color cSrc, Color cDst, BlendFactor srcFactor, BlendFactor dstFactor
 
     return newColor;
 
-    static Color Factor(BlendFactor factor, Color src, Color dst)
+    static Color Factor(BlendFactor colorFactor, BlendFactor alphaFactor, Color src, Color dst)
     {
-        return factor switch
+        var rgb = colorFactor switch
         {
             BlendFactor.GL_ZERO => 0.0,
             BlendFactor.GL_ONE => 1.0,
 
-            BlendFactor.GL_SRC_COLOR => src,
-            BlendFactor.GL_ONE_MINUS_SRC_COLOR => 1.0 - src,
-            BlendFactor.GL_DST_COLOR => dst,
-            BlendFactor.GL_ONE_MINUS_DST_COLOR => 1.0 - dst,
+            BlendFactor.GL_SRC_COLOR => src.Rgb,
+            BlendFactor.GL_ONE_MINUS_SRC_COLOR => 1.0 - src.Rgb,
+            BlendFactor.GL_DST_COLOR => dst.Rgb,
+            BlendFactor.GL_ONE_MINUS_DST_COLOR => 1.0 - dst.Rgb,
 
             BlendFactor.GL_SRC_ALPHA => src.A,
             BlendFactor.GL_ONE_MINUS_SRC_ALPHA => 1.0 - src.A,
-            BlendFactor.GS_DST_ALPHA => dst.A,
+            BlendFactor.GL_DST_ALPHA => dst.A,
             BlendFactor.GL_ONE_MINUS_DST_ALPHA => 1.0 - dst.A
         };
+
+        var alpha = alphaFactor switch
+        {
+            BlendFactor.GL_ZERO => 0.0,
+            BlendFactor.GL_ONE => 1.0,
+
+            BlendFactor.GL_SRC_COLOR => src.A,
+            BlendFactor.GL_ONE_MINUS_SRC_COLOR => 1.0 - src.A,
+            BlendFactor.GL_DST_COLOR => dst.A,
+            BlendFactor.GL_ONE_MINUS_DST_COLOR => 1.0 - dst.A,
+
+            BlendFactor.GL_SRC_ALPHA => src.A,
+            BlendFactor.GL_ONE_MINUS_SRC_ALPHA => 1.0 - src.A,
+            BlendFactor.GL_DST_ALPHA => dst.A,
+            BlendFactor.GL_ONE_MINUS_DST_ALPHA => 1.0 - dst.A
+        };
+
+        return new Color(rgb, alpha);
     }
 }
 
-
 void Render(FrameBuffer frameBuffer, IEnumerable<Fragment> fragments,
-    BlendFactor srcFactor, BlendFactor dstFactor,
+    BlendFactor srcColorFactor, BlendFactor srcAlphaFactor, BlendFactor dstColorFactor, BlendFactor dstAlphaFactor,
     BlendEquation blendEquation,
     DepthTest depthTest1, DepthTest depthTest2,
     bool enableDepth1Write, bool enableDepth2Write)
@@ -81,7 +101,7 @@ void Render(FrameBuffer frameBuffer, IEnumerable<Fragment> fragments,
             var cSrc = fragment.Color;
             var cDst = frameBuffer.ColorBuffer.Read();
 
-            frameBuffer.ColorBuffer.Set(Blend(cSrc, cDst, srcFactor, dstFactor, blendEquation));
+            frameBuffer.ColorBuffer.Set(Blend(cSrc, cDst, srcColorFactor, srcAlphaFactor, dstColorFactor, dstAlphaFactor, blendEquation));
         }
     }
 
@@ -101,98 +121,55 @@ void Render(FrameBuffer frameBuffer, IEnumerable<Fragment> fragments,
     }
 }
 
-Console.OutputEncoding = System.Text.Encoding.Unicode;
-
+/*
+ * Create the fragments
+ */
 var rand = new Random(42);
 var fragments = Enumerable.Range(0, 5).Select(i => Fragment.Random(rand)).ToList();
 
-var colorBuffer = new Buffer<Color>(Color.Black);
+var colorBuffer = new Buffer<Color>(Color.OpaqueBlack);
 var depthBuffers = new [] { new Buffer<double>(double.PositiveInfinity), new Buffer<double>(double.PositiveInfinity) };
-
 
 var accumulationBuffer = new Buffer<Color>(new Color(0.0, 0.0, 0.0, 1.0));
 
+/*
+ * Simple depth peeling passes front to back, with front to back blending into accumulation buffer.
+ */
 for (var i = 0; i < 10; ++i)
 {
+    /*
+     * depthBuffers[i % 2] is the depth that is to be peeled in this pass, and
+     * depthBuffers[(i + 1) % 2] is used as a regular depth buffer and must be cleared. 
+     */
     var frameBuffer = new FrameBuffer(colorBuffer, depthBuffers[i % 2], depthBuffers[(i + 1) % 2]);
 
     frameBuffer.ColorBuffer.Set(new Color(0.0, 0.0, 0.0, 0.0));
     frameBuffer.DepthBuffer2.Set(double.PositiveInfinity);
 
-    if (i == 0)
-    {
-        Render(frameBuffer, fragments, BlendFactor.GL_ONE, BlendFactor.GL_ZERO, BlendEquation.GL_FUNC_ADD, DepthTest.GL_ALWAYS, DepthTest.GL_LESS, false, true);
-    }
-    else
-    {
-        Render(frameBuffer, fragments, BlendFactor.GL_ONE, BlendFactor.GL_ZERO, BlendEquation.GL_FUNC_ADD, DepthTest.GL_GREATER, DepthTest.GL_LESS, false, true);
-    }
+    var depthTest1 = i == 0 ? DepthTest.GL_ALWAYS : DepthTest.GL_GREATER;
+    var depthTest2 = DepthTest.GL_LESS;
 
-    Console.WriteLine($"{frameBuffer.DepthBuffer2.Read()}");
-
-    var src = frameBuffer.ColorBuffer.Read();
-    var dst = accumulationBuffer.Read();
-    var newPixel = new Color(
-        dst.R + dst.A * src.A * src.R,
-        dst.G + dst.A * src.A * src.G,
-        dst.B + dst.A * src.A * src.B,
-        (1.0 - src.A)*dst.A);
-
-    accumulationBuffer.Set(newPixel);
-}
-
-var referenceValue = FrontToBackBlend(fragments);
-
-Debug.Assert(referenceValue == accumulationBuffer.Read());
-
-public record FrameBuffer(Buffer<Color> ColorBuffer, Buffer<double> DepthBuffer1, Buffer<double> DepthBuffer2);
-
-public enum DepthTest
-{
-    GL_NEVER,
-    GL_LESS,
-    GL_GREATER,
-    GL_EQUAL,
-    GL_ALWAYS,
-    GL_LEQUAL,
-    GL_GEQUAL,
-    GL_NOTEQUAL
-}
-
-public enum BlendEquation
-{
-    GL_FUNC_ADD,
-    GL_FUNC_SUBSTRACT,
-    GL_FUNC_REVERSE_SUBSTRACT,
-    GL_MIN, GL_MAX
-}
-
-public enum BlendFactor
-{
-    GL_ZERO,
-    GL_ONE,
-
-    GL_SRC_COLOR,
-    GL_ONE_MINUS_SRC_COLOR,
-    GL_DST_COLOR,
-    GL_ONE_MINUS_DST_COLOR,
-
-    GL_SRC_ALPHA,
-    GL_ONE_MINUS_SRC_ALPHA,
-    GS_DST_ALPHA,
-    GL_ONE_MINUS_DST_ALPHA,
-
-    GL_CONSTANT_COLOR,
-    GL_ONE_MINUS_CONSTANT_COLOR,
-    GL_CONSTANT_ALPHA,
-    GL_ONE_MINUS_CONSTANT_ALPHA,
-
-    GL_SRC_ALPHA_SATURATE,
+    Render(frameBuffer, fragments,
+        BlendFactor.GL_SRC_ALPHA, BlendFactor.GL_ONE, BlendFactor.GL_ZERO, BlendFactor.GL_ZERO,
+        BlendEquation.GL_FUNC_ADD,
+        depthTest1, depthTest2,
+        false, true);
 
     /*
-    GL_SRC1_COLOR,
-    GL_ONE_MINUS_SRC1_COLOR,
-    GL_SRC1_ALPHA,
-    GL_ONE_MINUS_SRC1_ALPHA
-    */
+     * Accumulate the layer color into the accumulation buffer front to back.
+     * Src R,G,B have already be premultiplied by A in the peeling pass (BlendFactor.GL_SRC_ALPHA).
+     */
+    var src = frameBuffer.ColorBuffer.Read();
+    var dst = accumulationBuffer.Read();
+
+    accumulationBuffer.Set(
+        Blend(
+            src, dst,
+            BlendFactor.GL_DST_ALPHA, BlendFactor.GL_ZERO,
+            BlendFactor.GL_ONE, BlendFactor.GL_ONE_MINUS_SRC_ALPHA,
+            BlendEquation.GL_FUNC_ADD));
 }
+
+var referenceColor = FrontToBackBlend(fragments);
+
+Debug.Assert(referenceColor == accumulationBuffer.Read());
