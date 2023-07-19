@@ -3,7 +3,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.5.33516.290
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimpleDepthPeeling", "SimpleDepthPeeling\SimpleDepthPeeling.csproj", "{7296BCC6-6661-4C05-8DAB-7CF099333C06}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SimpleDepthPeeling", "SimpleDepthPeeling\SimpleDepthPeeling.csproj", "{7296BCC6-6661-4C05-8DAB-7CF099333C06}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpenGLDemo", "OpenGLDemo\OpenGLDemo.csproj", "{50376379-4F5F-4195-8EBB-0423E0306D3C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SquareDistanceTransform", "SquareDistanceTransform\SquareDistanceTransform.csproj", "{A12D723D-64C2-47B1-B494-9FC32B60B034}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +19,14 @@ Global
 		{7296BCC6-6661-4C05-8DAB-7CF099333C06}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7296BCC6-6661-4C05-8DAB-7CF099333C06}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7296BCC6-6661-4C05-8DAB-7CF099333C06}.Release|Any CPU.Build.0 = Release|Any CPU
+		{50376379-4F5F-4195-8EBB-0423E0306D3C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{50376379-4F5F-4195-8EBB-0423E0306D3C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{50376379-4F5F-4195-8EBB-0423E0306D3C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{50376379-4F5F-4195-8EBB-0423E0306D3C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A12D723D-64C2-47B1-B494-9FC32B60B034}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A12D723D-64C2-47B1-B494-9FC32B60B034}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A12D723D-64C2-47B1-B494-9FC32B60B034}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A12D723D-64C2-47B1-B494-9FC32B60B034}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
