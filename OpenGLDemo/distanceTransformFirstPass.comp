@@ -21,18 +21,6 @@ void main()
     int lineWidth = imageSize(sampleImage).x;
     uint lineIndex = gl_GlobalInvocationID.y;
 
-    // Initialize work arrays
-    for (int rowIndex = 0; rowIndex < lineWidth; ++rowIndex)
-    {
-        imageStore(indicatriceImage, ivec2(rowIndex, lineIndex), vec4(0.0));
-        imageStore(vImage, ivec2(rowIndex, lineIndex), vec4(0));
-    }
-
-    for (int rowIndex = 0; rowIndex <= lineWidth; ++rowIndex)
-    {
-        imageStore(zImage, ivec2(rowIndex, lineIndex), vec4(0.0));
-    }
-
     // Count the number of sites and store their location into indicatriceImage:
     int siteCount = 0;
     for (int rowIndex = 0; rowIndex < lineWidth; ++rowIndex)
@@ -62,9 +50,10 @@ void main()
     // Build the lower envelope combinatory structure
     for (int q = 1; q < siteCount; ++q)
     {
+        float iq = imageLoad(indicatriceImage, ivec2(q, lineIndex)).r;
         float vk = imageLoad(vImage, ivec2(k, lineIndex)).r;
         float s = Intersection(
-            imageLoad(indicatriceImage, ivec2(q, lineIndex)).r,
+            iq,
             0.0,
             imageLoad(indicatriceImage, ivec2(vk, lineIndex)).r,
             0.0);
@@ -74,7 +63,7 @@ void main()
             k -= 1;
             float vk = imageLoad(vImage, ivec2(k, lineIndex)).r;
             s = Intersection(
-                imageLoad(indicatriceImage, ivec2(q, lineIndex)).r,
+                iq,
                 0.0,
                 imageLoad(indicatriceImage, ivec2(vk, lineIndex)).r,
                 0.0);

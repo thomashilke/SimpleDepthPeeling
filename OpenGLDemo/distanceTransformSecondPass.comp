@@ -21,17 +21,9 @@ void main()
     int columnHeight = imageSize(sampleImage).y;
     uint columnIndex = gl_GlobalInvocationID.x;
 
-    // Initialize work and tmp arrays
     for (int lineIndex = 0; lineIndex < columnHeight; ++lineIndex)
     {
         imageStore(tmpImage, ivec2(columnIndex, lineIndex), imageLoad(sampleImage, ivec2(columnIndex, lineIndex)));
-        imageStore(indicatriceImage, ivec2(columnIndex, lineIndex), vec4(0.0));
-        imageStore(vImage, ivec2(columnIndex, lineIndex), vec4(0));
-    }
-
-    for (int lineIndex = 0; lineIndex <= columnHeight; ++lineIndex)
-    {
-        imageStore(zImage, ivec2(columnIndex, lineIndex), vec4(0.0));
     }
 
     // Count the number of sites and store their location into indicatriceImage:
@@ -66,9 +58,10 @@ void main()
         float vk = imageLoad(vImage, ivec2(columnIndex, k)).r;
         float ivk = imageLoad(indicatriceImage, ivec2(columnIndex, vk)).r;
         float iq = imageLoad(indicatriceImage, ivec2(columnIndex, q)).r;
+        float siq = imageLoad(sampleImage, ivec2(columnIndex, iq)).r;
         float s = Intersection(
             iq,
-            imageLoad(sampleImage, ivec2(columnIndex, iq)).r,
+            siq,
             ivk,
             imageLoad(sampleImage, ivec2(columnIndex, ivk)).r);
 
@@ -77,10 +70,9 @@ void main()
             k -= 1;
             float vk = imageLoad(vImage, ivec2(columnIndex, k)).r;
             float ivk = imageLoad(indicatriceImage, ivec2(columnIndex, vk)).r;
-            float iq = imageLoad(indicatriceImage, ivec2(columnIndex, q)).r;
             s = Intersection(
                 iq,
-                imageLoad(sampleImage, ivec2(columnIndex, iq)).r,
+                siq,
                 ivk,
                 imageLoad(sampleImage, ivec2(columnIndex, ivk)).r);
         }
@@ -102,6 +94,7 @@ void main()
 
         float vk = imageLoad(vImage, ivec2(columnIndex, k)).r;
         float d = q - imageLoad(indicatriceImage, ivec2(columnIndex, vk)).r;
-        imageStore(sampleImage, ivec2(columnIndex, q), vec4(d * d) + imageLoad(tmpImage, ivec2(columnIndex, imageLoad(indicatriceImage, ivec2(columnIndex, vk)).r)));
+        float f = imageLoad(tmpImage, ivec2(columnIndex, imageLoad(indicatriceImage, ivec2(columnIndex, vk)).r)).r;
+        imageStore(sampleImage, ivec2(columnIndex, q), vec4(d * d  + f));
     }
 }

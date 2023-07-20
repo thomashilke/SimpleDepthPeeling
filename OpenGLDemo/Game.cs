@@ -125,8 +125,10 @@ public class Game : GameWindow
     {
         base.OnLoad();
 
+        Debug.WriteLine(GL.GetString(StringName.Vendor));
+        Debug.WriteLine(GL.GetString(StringName.Renderer));
+
         _timer = new Stopwatch();
-        _timer.Start();
 
         _framebuffer = GL.GenFramebuffer();
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, _framebuffer);
