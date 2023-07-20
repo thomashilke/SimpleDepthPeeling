@@ -2,6 +2,8 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
 using System.Timers;
 
 using OpenTK.Graphics.OpenGL4;
@@ -99,6 +101,8 @@ public class Game : GameWindow
     private ShaderProgram _drawQuad;
     private int _computeProgram;
 
+    private DistanceTransform? _distanceTransform;
+
     private int _vertexBufferObject;
     private int _vertexArrayObject;
     private int _elementBufferObject;
@@ -129,11 +133,10 @@ public class Game : GameWindow
 
         _colorAttachmentTexture = GL.GenTexture();
         GL.BindTexture(TextureTarget.Texture2D, _colorAttachmentTexture);
-        GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba32f, base.Size[0], base.Size[1], 0, PixelFormat.Red, PixelType.Float, IntPtr.Zero);
+        GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.R32f, base.Size[0], base.Size[1], 0, PixelFormat.Red, PixelType.Float, IntPtr.Zero);
         GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Linear);
         GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Linear);
         GL.BindTexture(TextureTarget.Texture2D, 0);
-        GL.BindImageTexture(0, _colorAttachmentTexture, 0, false, 0, TextureAccess.ReadWrite, SizedInternalFormat.Rgba32f);
 
         GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, _colorAttachmentTexture, 0);
 
@@ -167,7 +170,9 @@ public class Game : GameWindow
         _shaderProgram = new ShaderProgram("shader.vert", "shader.frag");
         _drawQuad = new ShaderProgram("drawQuad.vert", "drawQuad.frag");
 
-        _computeProgram = SetupComputeShader("compute.compute");
+        _computeProgram = SetupComputeShader("compute.comp");
+
+        _distanceTransform = new DistanceTransform(this);
 
         GL.ClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     }
@@ -183,10 +188,11 @@ public class Game : GameWindow
     protected override void OnRenderFrame(FrameEventArgs args)
     {
         base.OnRenderFrame(args);
+        _timer.Reset();
+        _timer.Start();
 
         // first pass
-        var timeValue = _timer.Elapsed.TotalSeconds;
-        var redValue = (float)Math.Sin(timeValue) / 2.0f + 0.5f;
+        var redValue = 1.0f;
 
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, _framebuffer);
         GL.ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -200,13 +206,23 @@ public class Game : GameWindow
         GL.BindVertexArray(_vertexArrayObject);
         GL.DrawElements(BeginMode.Triangles, _indices.Length, DrawElementsType.UnsignedInt, 0);
 
-        // compute pass
-        GL.UseProgram(_computeProgram);
-        GL.DispatchCompute(base.Size[0], base.Size[1], 1);
+        if (true)
+        { 
+            // compute pass
+            GL.UseProgram(_computeProgram);
 
-        // make sure writing to image has finished before read
-        GL.MemoryBarrier(MemoryBarrierFlags.ShaderImageAccessBarrierBit);
+            GL.BindImageTexture(0, _colorAttachmentTexture, 0, false, 0, TextureAccess.ReadWrite, SizedInternalFormat.R32f);
+            GL.DispatchCompute(base.Size[0], base.Size[1], 1);
 
+            // make sure writing to image has finished before read
+            GL.MemoryBarrier(MemoryBarrierFlags.ShaderImageAccessBarrierBit);
+        }
+
+        if (true)
+        { 
+            _distanceTransform.RunFirstPass(this, _colorAttachmentTexture);
+            _distanceTransform.RunSecondPass(this, _colorAttachmentTexture);
+        }
 
         // second pass
         GL.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
@@ -220,6 +236,8 @@ public class Game : GameWindow
         GL.DrawArrays(PrimitiveType.TriangleFan, 0, 4);
 
         Context.SwapBuffers();
+
+        Debug.WriteLine(_timer.ElapsedMilliseconds);
     }
 
     protected override void OnUpdateFrame(FrameEventArgs e)
@@ -234,7 +252,7 @@ public class Game : GameWindow
         }
     }
 
-    private int SetupComputeShader(string computePath)
+    private static int SetupComputeShader(string computePath)
     {
         var computeProgram = GL.CreateProgram();
         var computeShader = GL.CreateShader(ShaderType.ComputeShader);
@@ -263,5 +281,88 @@ public class Game : GameWindow
         GL.DeleteShader(computeShader);
 
         return computeProgram;
+    }
+
+    public class DistanceTransform
+    {
+        private readonly int _firstPassComputeShader;
+        private readonly int _secondPassComputeShader;
+
+        private readonly int _indicatriceWorkArray;
+        private readonly int _tmpWorkArray;
+        private readonly int _vWorkArray;
+        private readonly int _zWorkArray;
+
+        public DistanceTransform(GameWindow window)
+        {
+            _firstPassComputeShader = SetupComputeShader("distanceTransformFirstPass.comp");
+            _secondPassComputeShader = SetupComputeShader("distanceTransformSecondPass.comp");
+
+            _indicatriceWorkArray = GL.GenTexture();
+            GL.BindTexture(TextureTarget.Texture2D, _indicatriceWorkArray);
+            GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.R32f, window.Size[0], window.Size[1], 0, PixelFormat.Red, PixelType.Float, IntPtr.Zero);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
+            GL.BindTexture(TextureTarget.Texture2D, 0);
+
+            _tmpWorkArray = GL.GenTexture();
+            GL.BindTexture(TextureTarget.Texture2D, _tmpWorkArray);
+            GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.R32f, window.Size[0], window.Size[1], 0, PixelFormat.Red, PixelType.Float, IntPtr.Zero);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
+            GL.BindTexture(TextureTarget.Texture2D, 0);
+
+            _vWorkArray = GL.GenTexture();
+            GL.BindTexture(TextureTarget.Texture2D, _vWorkArray);
+            GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.R32f, window.Size[0], window.Size[1], 0, PixelFormat.Red, PixelType.Float, IntPtr.Zero);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Nearest);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
+            GL.BindTexture(TextureTarget.Texture2D, 0);
+
+            _zWorkArray = GL.GenTexture();
+            GL.BindTexture(TextureTarget.Texture2D, _zWorkArray);
+            GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.R32f, window.Size[0] + 1, window.Size[1] + 1, 0, PixelFormat.Red, PixelType.Float, IntPtr.Zero);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Linear);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Linear);
+            GL.BindTexture(TextureTarget.Texture2D, 0);
+        }
+
+        /// <summary>
+        ///   Run horizontal pass on the indicatrice of the input image.
+        /// </summary>
+        /// <param name="inputImage">Should be a texture in R32ui format</param>
+        public void RunFirstPass(GameWindow window, int inputImage)
+        {
+            GL.UseProgram(_firstPassComputeShader);
+
+            GL.BindImageTexture(0, inputImage, 0, false, 0, TextureAccess.ReadWrite, SizedInternalFormat.R32f);
+            GL.BindImageTexture(1, _indicatriceWorkArray, 0, false, 0, TextureAccess.ReadWrite, SizedInternalFormat.R32f);
+            GL.BindImageTexture(2, _vWorkArray, 0, false, 0, TextureAccess.ReadWrite, SizedInternalFormat.R32f);
+            GL.BindImageTexture(3, _zWorkArray, 0, false, 0, TextureAccess.ReadWrite, SizedInternalFormat.R32f);
+
+            GL.DispatchCompute(1, window.Size[1], 1);
+            // make sure writing to image has finished before read
+            GL.MemoryBarrier(MemoryBarrierFlags.ShaderImageAccessBarrierBit);
+        }
+
+        /// <summary>
+        ///   Run vertical pass on the distance samples of the input image.
+        /// </summary>
+        /// <param name="inputImage">Should be a texture in R32i format</param>
+        public void RunSecondPass(GameWindow window, int inputImage)
+        {
+            GL.UseProgram(_secondPassComputeShader);
+
+            GL.BindImageTexture(0, inputImage, 0, false, 0, TextureAccess.ReadWrite, SizedInternalFormat.R32f);
+            GL.BindImageTexture(1, _indicatriceWorkArray, 0, false, 0, TextureAccess.ReadWrite, SizedInternalFormat.R32f);
+            GL.BindImageTexture(2, _vWorkArray, 0, false, 0, TextureAccess.ReadWrite, SizedInternalFormat.R32f);
+            GL.BindImageTexture(3, _zWorkArray, 0, false, 0, TextureAccess.ReadWrite, SizedInternalFormat.R32f);
+            GL.BindImageTexture(4, _tmpWorkArray, 0, false, 0, TextureAccess.ReadWrite, SizedInternalFormat.R32f);
+
+            GL.DispatchCompute(window.Size[0], 1, 1);
+
+            // make sure writing to image has finished before read
+            GL.MemoryBarrier(MemoryBarrierFlags.ShaderImageAccessBarrierBit);
+        }
     }
 }

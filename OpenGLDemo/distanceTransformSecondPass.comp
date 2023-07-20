@@ -1,0 +1,107 @@
+﻿#version 430 core
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(r32f, binding = 0) uniform image2D sampleImage;
+layout(r32f, binding = 1) uniform image2D indicatriceImage;
+layout(r32f, binding = 2) uniform image2D vImage;
+layout(r32f, binding = 3) uniform image2D zImage;
+layout(r32f, binding = 4) uniform image2D tmpImage;
+
+const float positiveInfinity = uintBitsToFloat(0x7F800000);
+const float negativeInfinity = uintBitsToFloat(0xFF800000);
+
+float Intersection(float q, float fq, float vk, float fvk)
+{
+    return ((fq + q*q) - (fvk + vk * vk)) / (2.0 * q - 2.0 * vk);
+}
+
+void main()
+{
+    int columnHeight = imageSize(sampleImage).y;
+    uint columnIndex = gl_GlobalInvocationID.x;
+
+    // Initialize work and tmp arrays
+    for (int lineIndex = 0; lineIndex < columnHeight; ++lineIndex)
+    {
+        imageStore(tmpImage, ivec2(columnIndex, lineIndex), imageLoad(sampleImage, ivec2(columnIndex, lineIndex)));
+        imageStore(indicatriceImage, ivec2(columnIndex, lineIndex), vec4(0.0));
+        imageStore(vImage, ivec2(columnIndex, lineIndex), vec4(0));
+    }
+
+    for (int lineIndex = 0; lineIndex <= columnHeight; ++lineIndex)
+    {
+        imageStore(zImage, ivec2(columnIndex, lineIndex), vec4(0.0));
+    }
+
+    // Count the number of sites and store their location into indicatriceImage:
+    int siteCount = 0;
+    for (int lineIndex = 0; lineIndex < columnHeight; ++lineIndex)
+    {
+        if (imageLoad(sampleImage, ivec2(columnIndex, lineIndex)).x > -1.0)
+        {
+            imageStore(indicatriceImage, ivec2(columnIndex, siteCount), vec4(lineIndex));
+            siteCount += 1;
+        }
+    }
+
+    if (siteCount == 0)
+    {
+        for (int lineIndex = 0; lineIndex < columnHeight; ++lineIndex)
+        {
+            imageStore(sampleImage, ivec2(columnIndex, lineIndex), vec4(-1.0));
+        }
+        return;
+    }
+
+    // Initialize lower envelope combinatory structure
+    int k = 0;
+    imageStore(vImage, ivec2(columnIndex, 0), vec4(0));
+    imageStore(zImage, ivec2(columnIndex, 0), vec4(negativeInfinity));
+    imageStore(zImage, ivec2(columnIndex, 1), vec4(positiveInfinity));
+
+    // Build the lower envelope combinatory structure
+    for (int q = 1; q < siteCount; ++q)
+    {
+        float vk = imageLoad(vImage, ivec2(columnIndex, k)).r;
+        float ivk = imageLoad(indicatriceImage, ivec2(columnIndex, vk)).r;
+        float iq = imageLoad(indicatriceImage, ivec2(columnIndex, q)).r;
+        float s = Intersection(
+            iq,
+            imageLoad(sampleImage, ivec2(columnIndex, iq)).r,
+            ivk,
+            imageLoad(sampleImage, ivec2(columnIndex, ivk)).r);
+
+        while (s <= imageLoad(zImage, ivec2(columnIndex, k)).r)
+        {
+            k -= 1;
+            float vk = imageLoad(vImage, ivec2(columnIndex, k)).r;
+            float ivk = imageLoad(indicatriceImage, ivec2(columnIndex, vk)).r;
+            float iq = imageLoad(indicatriceImage, ivec2(columnIndex, q)).r;
+            s = Intersection(
+                iq,
+                imageLoad(sampleImage, ivec2(columnIndex, iq)).r,
+                ivk,
+                imageLoad(sampleImage, ivec2(columnIndex, ivk)).r);
+        }
+
+        k += 1;
+        imageStore(vImage, ivec2(columnIndex, k), vec4(q));
+        imageStore(zImage, ivec2(columnIndex, k), vec4(s));
+        imageStore(zImage, ivec2(columnIndex, k + 1), vec4(positiveInfinity));
+    }
+
+    // Evaluate the lower envelope
+    k = 0;
+    for (int q = 0; q < columnHeight; ++q)
+    {
+        while (imageLoad(zImage, ivec2(columnIndex, k + 1)).r < q)
+        {
+            k += 1;
+        }
+
+        float vk = imageLoad(vImage, ivec2(columnIndex, k)).r;
+        float d = q - imageLoad(indicatriceImage, ivec2(columnIndex, vk)).r;
+        imageStore(sampleImage, ivec2(columnIndex, q), vec4(d * d) + imageLoad(tmpImage, ivec2(columnIndex, imageLoad(indicatriceImage, ivec2(columnIndex, vk)).r)));
+    }
+}

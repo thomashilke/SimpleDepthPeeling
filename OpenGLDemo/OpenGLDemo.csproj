@@ -13,11 +13,17 @@
   <ItemGroup>
     <UpToDateCheckInput Include="*.vert" />
     <UpToDateCheckInput Include="*.frag" />
-    <UpToDateCheckInput Include="*.compute" />
+    <UpToDateCheckInput Include="*.comp" />
   </ItemGroup>
-
+  
   <ItemGroup>
-    <None Update="compute.compute">
+    <None Update="distanceTransformFirstPass.comp">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="distanceTransformSecondPass.comp">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="compute.comp">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="drawQuad.frag">
